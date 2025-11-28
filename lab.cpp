@@ -1,19 +1,28 @@
 #include <iostream>
 #include <string>
 #include <algorithm>
+#include <map>
+#include <vector>
 
 using namespace std;
 
-enum class CommandT {
-	CREATE, INSERT, PRINT_INDEX, SEARCH, UNKNOWN
+enum class CommandType {
+    CREATE, INSERT, PRINT_INDEX, SEARCH, UNKNOWN
 };
 
 struct Command {
-    CommandT type = CommandT::UNKNOWN;
+    CommandType type = CommandType::UNKNOWN;
     string collectionName;
-    string text;       
+    string text;
     string query;
 };
+
+struct Document {
+    string text;
+};
+
+map<string, vector<Document>> collection;
+
 
 string trim(const string& s) {
     size_t a = s.find_first_not_of(" \t\n\r");
@@ -27,39 +36,40 @@ Command parseCommand(const string& input) {
 
     string s = trim(input);
     if (s.empty() || s.back() != ';')
-        return cmd;  
+        return cmd;
 
-    s.pop_back(); 
+    s.pop_back();
     s = trim(s);
 
     size_t pos = s.find(' ');
     string keyword = (pos == string::npos) ? s : s.substr(0, pos);
-    string r = (pos == string::npos) ? "" : trim(s.substr(pos + 1));
+    string rest = (pos == string::npos) ? "" : trim(s.substr(pos + 1));
 
     transform(keyword.begin(), keyword.end(), keyword.begin(), ::toupper);
 
-    if (keyword == "CREATE") cmd.type = CommandT::CREATE;
-    else if (keyword == "INSERT") cmd.type = CommandT::INSERT;
-    else if (keyword == "PRINT_INDEX") cmd.type = CommandT::PRINT_INDEX;
-    else if (keyword == "SEARCH") cmd.type = CommandT::SEARCH;
-    else cmd.type = CommandT::UNKNOWN;
+    if (keyword == "CREATE") cmd.type = CommandType::CREATE;
+    else if (keyword == "INSERT") cmd.type = CommandType::INSERT;
+    else if (keyword == "PRINT_INDEX") cmd.type = CommandType::PRINT_INDEX;
+    else if (keyword == "SEARCH") cmd.type = CommandType::SEARCH;
+    else cmd.type = CommandType::UNKNOWN;
 
-    if (cmd.type == CommandT::CREATE) {
-        cmd.collectionName = r;
+    if (cmd.type == CommandType::CREATE) {
+        cmd.collectionName = rest;
         return cmd;
     }
 
-    if (cmd.type == CommandT::PRINT_INDEX) {
-        cmd.collectionName = r;
+    if (cmd.type == CommandType::PRINT_INDEX) {
+        cmd.collectionName = rest;
         return cmd;
     }
 
-    if (cmd.type == CommandT::INSERT) {
-        size_t p = r.find(' ');
+    if (cmd.type == CommandType::INSERT) {
+        size_t p = rest.find(' ');
         if (p == string::npos) return cmd;
 
-        cmd.collectionName = r.substr(0, p);
-        string doc = trim(r.substr(p + 1));
+        cmd.collectionName = rest.substr(0, p);
+
+        string doc = trim(rest.substr(p + 1));
 
         if (doc.size() >= 2 && doc.front() == '"' && doc.back() == '"')
             cmd.text = doc.substr(1, doc.size() - 2);
@@ -67,15 +77,15 @@ Command parseCommand(const string& input) {
         return cmd;
     }
 
-    if (cmd.type == CommandT::SEARCH) {
-        size_t p = r.find(' ');
+    if (cmd.type == CommandType::SEARCH) {
+        size_t p = rest.find(' ');
         if (p == string::npos) {
-            cmd.collectionName = r;
+            cmd.collectionName = rest;
             return cmd;
         }
 
-        cmd.collectionName = r.substr(0, p);
-        string tail = trim(r.substr(p + 1));
+        cmd.collectionName = rest.substr(0, p);
+        string tail = trim(rest.substr(p + 1));
 
         string pref = tail.substr(0, 5);
         transform(pref.begin(), pref.end(), pref.begin(), ::toupper);
@@ -101,27 +111,52 @@ int main() {
         Command cmd = parseCommand(input);
 
         switch (cmd.type) {
-        case CommandT::CREATE:
-            cout << "Collection " << cmd.collectionName << " has been created" << endl;
+
+        case CommandType::CREATE:
+            if (collection.find(cmd.collectionName) != collection.end()) {
+                cout << "Collection already exists\n";
+                break;
+            }
+            collection[cmd.collectionName] = {};
+            cout << "Collection " << cmd.collectionName << " has been created\n";
             break;
 
-        case CommandT::INSERT:
-            cout << "Document added to " << cmd.collectionName << endl;
-            cout << " TEXT=[" << cmd.text << "]" << endl;
+        case CommandType::INSERT:
+            if (collection.find(cmd.collectionName) == collection.end()) {
+                cout << "Collection does not exist\n";
+                break;
+            }
+            collection[cmd.collectionName].push_back({ cmd.text });
+            cout << "Document added to " << cmd.collectionName << " \n";
             break;
 
-        case CommandT::PRINT_INDEX:
-            cout << "Print index of " << cmd.collectionName << "\n";
+        case CommandType::PRINT_INDEX:
+            if (collection.find(cmd.collectionName) == collection.end()) {
+                cout << "Collection does not exist\n";
+                break;
+            }
+            cout << "Documents in " << cmd.collectionName << ":\n";
+            if (collection[cmd.collectionName].empty()) {
+                cout << " (empty)\n";
+            }
+            else {
+                for (const auto& d : collection[cmd.collectionName])
+                    cout << " - " << d.text << "\n";
+            }
             break;
 
-        case CommandT::SEARCH:
-            cout << "Search in " << cmd.collectionName;
+        case CommandType::SEARCH:
+            if (collection.find(cmd.collectionName) == collection.end()) {
+                cout << "Collection does not exist\n";
+                break;
+            }
+            cout << "SEARCH in " << cmd.collectionName << " ";
             if (!cmd.query.empty()) cout << " WHERE " << cmd.query;
             cout << "\n";
             break;
 
         default:
-            cout << "Unknown or invalid command" << endl;
+            cout << "Unknown or invalid command\n";
         }
     }
 }
